@@ -179,42 +179,105 @@ def write_readable_report(tshark_path, pcap_abs, keylog_abs, out_path):
     una línea por petición con método + host + ruta. Guardado junto al pcap.
     Esto evita la confusión con 'Follow TLS Stream' (que pinta HTTP/2 binario en crudo).
     """
+    req_fields = [
+        "frame.number", "tcp.stream",
+        "http2.headers.method", "http2.headers.authority", "http2.headers.path",
+        "http.request.method", "http.host", "http.request.uri",
+        "http2.headers.user_agent", "http.user_agent",
+        "http2.headers.status", "http.response.code",
+    ]
     try:
         out = subprocess.run(
             [tshark_path, "-r", pcap_abs, "-o", f"tls.keylog_file:{keylog_abs}",
              "-Y", "http2.headers.method or http.request.method",
-             "-T", "fields",
-             "-e", "frame.number",
-             "-e", "http2.headers.method", "-e", "http2.headers.authority",
-             "-e", "http2.headers.path",
-             "-e", "http.request.method", "-e", "http.host", "-e", "http.request.uri",
-             "-e", "http2.headers.user_agent", "-e", "http.user_agent",
-             "-e", "http2.headers.status", "-e", "http.response.code"],
+             "-T", "fields"] + sum((['-e', f] for f in req_fields), []),
+            capture_output=True, text=True, timeout=120,
+        )
+        # Cuerpos DATA de HTTP/2 (ya descifrados aquí, en hex) por stream TCP:
+        outd = subprocess.run(
+            [tshark_path, "-r", pcap_abs, "-o", f"tls.keylog_file:{keylog_abs}",
+             "-Y", "http2.data.data", "-T", "fields",
+             "-e", "frame.number", "-e", "tcp.stream",
+             "-e", "http2.data.data"],
+            capture_output=True, text=True, timeout=120,
+        )
+        # Cuerpos de HTTP/1.1 (cuando hay):
+        outb = subprocess.run(
+            [tshark_path, "-r", pcap_abs, "-o", f"tls.keylog_file:{keylog_abs}",
+             "-Y", "http.file_data", "-T", "fields",
+             "-e", "frame.number", "-e", "tcp.stream",
+             "-e", "http.file_data"],
             capture_output=True, text=True, timeout=120,
         )
     except Exception as e:
         return 0, f"no pude generar el informe: {e}"
+
+    # Agrupa cuerpos por stream TCP (los DATA fragmentados van llegando en varias tramas).
+    bodies = {}
+    def add_hex(stream, hx):
+        bodies.setdefault(str(stream), []).append(hx)
+    for ln in outd.stdout.splitlines():
+        f = (ln.split("\t") + [""] * 3)[:3]
+        if f[2]:
+            for piece in f[2].split(","):
+                add_hex(f[1], piece)
+    def add_raw(stream, txt):
+        bodies.setdefault(str(stream), []).append("RAWJSON:" + txt.replace("\n", " "))
+    for ln in outb.stdout.splitlines():
+        f = (ln.split("\t") + [""] * 3)[:3]
+        if f[2]:
+            # http.file_data ya sale como texto, con escapes \xNN o similar; lo guardamos tal cual.
+            txt = f[2].replace("\\r", "").replace("\\n", " ").strip()
+            if txt:
+                add_raw(f[1], txt)
+
     rows = []
+    reqid = []
     for ln in out.stdout.splitlines():
-        f = (ln.split("\t") + [""] * 10)[:10]
-        fnum, m2, host2, path2, m1, host1, uri1, ua, st2, _ = f
+        f = (ln.split("\t") + [""] * 12)[:12]
+        (fnum, sstream, m2, host2, path2, m1, host1, uri1,
+         ua2, ua1, st2, _respcode) = f
         method = m2 or m1
         host = host2 or host1 or ""
         path = path2 or uri1 or ""
-        status = st2 or ""
-        if not (method or status):
+        ua = ua2 if "Mozilla" in ua2 or "Chrome" in ua2 else ua1
+        if not (method or st2):
             continue
-        ui_x = f" (frame {fnum})" if fnum else ""
         if method:
-            line = f"{method:6} {host}{path}  {ua[:60] if ua else ''}".rstrip()
+            reqid.append(int(fnum) if fnum.isdigit() else 0)
+            rows.append(f"--- PETICIÓN (frame {fnum}, stream tcp {sstream or '?'}) ---")
+            rows.append(f"{method:6} https://{host}{path}")
+            if ua:
+                rows.append(f"  User-Agent: {ua}")
+            b = bodies.get(str(sstream), []); bstr = b[0] if b else ""
         else:
-            line = f"<- {status} (respuesta)" + (f"  {host}" if host else "")
-        rows.append(line.rstrip())
+            rows.append(f"--- RESPUESTA {st2 or ''} (frame {fnum}, stream tcp {sstream or '?'}) ---")
+            b = bodies.get(str(sstream), []); bstr = b[0] if len(b) > 0 else ""
+        if bstr:
+            if bstr.startswith("RAWJSON:"):
+                rows.append("  Contenido: " + bstr[8:400])
+            else:
+                try:
+                    raw = bytes.fromhex(bstr[:4000])
+                    if b"\x1f\x8b" in raw[:2]:
+                        import gzip
+                        raw = gzip.decompress(raw[:20000])
+                    elif raw[:1] == b"\x78":
+                        import zlib
+                        raw = zlib.decompressobj(-15).decompress(raw[:20000])
+                    try:
+                        txt = raw.decode("utf-8")
+                    except UnicodeDecodeError:
+                        txt = raw.decode("latin-1", errors="replace")
+                    rows.append("  Contenido: " + txt[:400].replace("\n", " "))
+                except Exception:
+                    rows.append(f"  Contenido: (binario, {len(bstr)//2} bytes hex)")
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("Peticiones/respuestas HTTP descifradas de: " + os.path.basename(pcap_abs) + "\n")
-        fh.write("(keylog: " + os.path.basename(keylog_abs) + ")\n\n")
+        fh.write("(keylog: " + os.path.basename(keylog_abs) + ")\n")
+        fh.write("Los cuerpos (POST/respuestas) se intentan descomprimir gzip/deflate y mostrarse en texto.\n\n")
         fh.write("\n".join(rows) if rows else "(sin peticiones descifradas)")
-    return len(rows), out_path
+    return len([r for r in rows if r.startswith(('---', 'GET', 'POST', 'PUT', 'DELETE'))]), out_path
 
 
 def main():

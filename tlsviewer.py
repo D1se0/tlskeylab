@@ -174,6 +174,49 @@ def verify_decryption(tshark_path, pcap_abs, keylog_abs):
                    "    Asegúrate de que keylog y pcap salgan de la MISMA sesión.")
 
 
+def write_readable_report(tshark_path, pcap_abs, keylog_abs, out_path):
+    """Genera un informe legible de TODAS las peticiones HTTP(S) descifradas:
+    una línea por petición con método + host + ruta. Guardado junto al pcap.
+    Esto evita la confusión con 'Follow TLS Stream' (que pinta HTTP/2 binario en crudo).
+    """
+    try:
+        out = subprocess.run(
+            [tshark_path, "-r", pcap_abs, "-o", f"tls.keylog_file:{keylog_abs}",
+             "-Y", "http2.headers.method or http.request.method",
+             "-T", "fields",
+             "-e", "frame.number",
+             "-e", "http2.headers.method", "-e", "http2.headers.authority",
+             "-e", "http2.headers.path",
+             "-e", "http.request.method", "-e", "http.host", "-e", "http.request.uri",
+             "-e", "http2.headers.user_agent", "-e", "http.user_agent",
+             "-e", "http2.headers.status", "-e", "http.response.code"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except Exception as e:
+        return 0, f"no pude generar el informe: {e}"
+    rows = []
+    for ln in out.stdout.splitlines():
+        f = (ln.split("\t") + [""] * 10)[:10]
+        fnum, m2, host2, path2, m1, host1, uri1, ua, st2, _ = f
+        method = m2 or m1
+        host = host2 or host1 or ""
+        path = path2 or uri1 or ""
+        status = st2 or ""
+        if not (method or status):
+            continue
+        ui_x = f" (frame {fnum})" if fnum else ""
+        if method:
+            line = f"{method:6} {host}{path}  {ua[:60] if ua else ''}".rstrip()
+        else:
+            line = f"<- {status} (respuesta)" + (f"  {host}" if host else "")
+        rows.append(line.rstrip())
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write("Peticiones/respuestas HTTP descifradas de: " + os.path.basename(pcap_abs) + "\n")
+        fh.write("(keylog: " + os.path.basename(keylog_abs) + ")\n\n")
+        fh.write("\n".join(rows) if rows else "(sin peticiones descifradas)")
+    return len(rows), out_path
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Abre Wireshark con el keylog configurado y el pcapng más reciente cargado.")
@@ -217,6 +260,13 @@ def main():
         okd, detail = verify_decryption(tshark, pcap_abs, keylog_abs)
         if okd:
             print("[+] " + detail)
+            # Informe legible junto al pcap: el 'Follow TLS Stream' pinta HTTP/2 binario,
+            # así que el rastro legible completo se deja aquí, en http_decoded.txt.
+            rep = os.path.splitext(pcap_abs)[0] + "+decodificado.txt"
+            nrows, rpath = write_readable_report(tshark, pcap_abs, keylog_abs, rep)
+            if nrows:
+                print(f"[+] Informe legible creado: {rpath} ({nrows} entradas)")
+                print("    (Ábrelo con cualquier editor; allí está TODO el rastro HTTP descifrado.)")
             # Muestras legibles para que el usuario vea que el descifrado funciona:
             try:
                 sample = subprocess.run(

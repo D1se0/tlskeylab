@@ -217,6 +217,26 @@ def main():
         okd, detail = verify_decryption(tshark, pcap_abs, keylog_abs)
         if okd:
             print("[+] " + detail)
+            # Muestras legibles para que el usuario vea que el descifrado funciona:
+            try:
+                sample = subprocess.run(
+                    [tshark_path if False else tshark, "-r", pcap_abs,
+                     "-o", f"tls.keylog_file:{keylog_abs}",
+                     "-Y", "http2.headers.method or http.request.method",
+                     "-T", "fields",
+                     "-e", "http2.headers.method", "-e", "http2.headers.authority",
+                     "-e", "http2.headers.path",
+                     "-e", "http.host", "-e", "http.request.uri"],
+                    capture_output=True, text=True, timeout=60,
+                )
+                rows = [ln for ln in sample.stdout.splitlines() if ln.strip()][:5]
+                if rows:
+                    print("    muestras descifradas:")
+                    for ln in rows:
+                        parts = [p for p in ln.split("\\t") if p]
+                        print("      · " + " ".join(parts) if parts else "")
+            except Exception:
+                pass
         else:
             print("[!] " + detail)
     else:

@@ -30,7 +30,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 
 PROFILE_NAME = "TLSKeyLab"
 
@@ -117,18 +116,62 @@ def write_profile(keylog_abs):
         base = existing
     os.makedirs(base, exist_ok=True)
     prefs = os.path.join(base, "preferences")
-    # Nota: en preferences el keylog se indica con la clave tls.keylog_file.
-    # Usamos el formato estándar de Wireshark (sin espacios tras el separador).
-    line = f"tls.keylog_file: {keylog_abs}\n"
-    # Sobrescribimos o añadimos la línea si el perfil ya existía.
+    # Wireshark >= 4.0 usa la clave "tls.keylog_file"; 3.x y algunos builds usan "ssl.keylog_file".
+    # Escribimos AMBAS para que funcione en cualquier versión (la que no aplica se ignora sola).
+    new_keys = [f"tls.keylog_file: {keylog_abs}\n", f"ssl.keylog_file: {keylog_abs}\n"]
     body = []
     if os.path.isfile(prefs):
         with open(prefs, "r", encoding="utf-8", errors="replace") as f:
-            body = [ln for ln in f.readlines() if not ln.startswith("tls.keylog_file:")]
-    body.append(line)
+            body = [ln for ln in f.readlines()
+                    if not ln.startswith("tls.keylog_file:") and not ln.startswith("ssl.keylog_file:")]
+    body.extend(new_keys)
     with open(prefs, "w", encoding="utf-8") as f:
         f.writelines(body)
     return PROFILE_NAME
+
+
+def find_tshark(ws_path):
+    """Devuelve la ruta a tshark (junto a Wireshark o en el PATH), o None."""
+    cand = os.path.join(os.path.dirname(ws_path), "tshark")
+    if sys.platform.startswith("win"):
+        cand = os.path.join(os.path.dirname(ws_path), "tshark.exe")
+    if os.path.isfile(cand):
+        return cand
+    return shutil.which("tshark")
+
+
+def verify_decryption(tshark_path, pcap_abs, keylog_abs):
+    """Prueba si el keylog descifra de verdad ese pcap, ANTES de abrir la GUI.
+
+    Devuelve (ok: bool, detalle: str).
+    """
+    try:
+        out = subprocess.run(
+            [tshark_path, "-r", pcap_abs, "-o", f"tls.keylog_file:{keylog_abs}",
+             "-Y", "http2 or http", "-T", "fields", "-e", "frame.number"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except Exception as e:
+        return False, f"tshark no se pudo ejecutar: {e}"
+    # Contamos las líneas que tshark emitió para el filtro (paquetes descifrados visibles).
+    cnt = sum(1 for ln in out.stdout.splitlines() if ln.strip())
+    if cnt > 0:
+        return True, f"descifrado OK: {cnt} peticiones HTTP(S) visibles"
+    # Sin HTTP2/HTTP visible: probamos si al menos TLS descifra algo (etiquetas 'Decrypted')
+    try:
+        out2 = subprocess.run(
+            [tshark_path, "-r", pcap_abs, "-o", f"tls.keylog_file:{keylog_abs}",
+             "-Y", "tls.decoded.keyintensity > 0", "-T", "fields", "-e", "frame.number"],
+            capture_output=True, text=True, timeout=60,
+        )
+        cnt2 = sum(1 for ln in out2.stdout.splitlines() if ln.strip())
+    except Exception:
+        return False, "0 registros descifrados (keylog no corresponde a este pcap)"
+    if cnt2 > 0:
+        return True, f"descifrado parcial: {cnt2} registros TLS decodificados"
+    return False, ("0 peticiones descifradas: el keylog no corresponde a este pcap.\n"
+                   "    Regenera: en la víctima 'tlskeylab.exe launch chrome', navega, y 'capture'.\n"
+                   "    Asegúrate de que keylog y pcap salgan de la MISMA sesión.")
 
 
 def main():
@@ -167,6 +210,17 @@ def main():
     print("    tls.keylog_file = %s" % keylog_abs)
     print("[+] Pcapng a abrir: %s" % pcap_abs)
     print("[+] Wireshark:      %s" % ws)
+
+    # Verificación pre-vuelo con tshark: ¿ese keylog descifra de verdad ese pcap?
+    tshark = find_tshark(ws)
+    if tshark:
+        okd, detail = verify_decryption(tshark, pcap_abs, keylog_abs)
+        if okd:
+            print("[+] " + detail)
+        else:
+            print("[!] " + detail)
+    else:
+        print("[*] tshark no encontrado; no puedo pre-verificar el descifrado.")
 
     if args.list:
         return 0

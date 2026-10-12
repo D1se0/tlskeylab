@@ -188,9 +188,9 @@ function Theory() {
     <section id="theory" className="section">
       <h2 className="reveal">Teoría: <b className="grad">qué pasa por dentro</b></h2>
       <p className="lead reveal">Handshake TLS, secretos y por qué esto es análisis y no intercepción.</p>
-      <div className="acc">
+      <div className="acc reveal">
         {THEORY.map((t, i) => (
-          <div className={'acc-item reveal' + (open === i ? ' open' : '')} key={i} style={{ transitionDelay: `${i * 70}ms` }}>
+          <div className={'acc-item' + (open === i ? ' open' : '')} key={i}>
             <button onClick={() => setOpen(open === i ? -1 : i)}>
               <span>{t.q}</span><em>▾</em>
             </button>

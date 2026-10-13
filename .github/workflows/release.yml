@@ -1,0 +1,32 @@
+name: Release (binarios + fuentes)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Empaquetar fuentes reproducibles (para auditar el exe)
+        run: |
+          sha256sum tlskeylab.exe labserver.exe tlsviewer.py > SHA256SUMS.txt
+          tar czf tlskeylab-suite-fuentes-y-binarios.tar.gz \
+            tlskeylab.exe labserver.exe tlsviewer.py \
+            *.go labserver_src/ site/ e2e_*.ps1 tlsviewer.py \
+            README.md TEORIA.md RELEASE_NOTES.md .github/workflows
+      - name: Crear release con notas + assets
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            tlskeylab.exe
+            labserver.exe
+            tlsviewer.py
+            SHA256SUMS.txt
+            tlskeylab-suite-fuentes-y-binarios.tar.gz

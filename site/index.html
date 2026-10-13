@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tlskeylab — descifra TU propio tráfico HTTPS con Wireshark y SSLKEYLOGFILE</title>
+<meta name="description" content="Suite pedagógica de laboratorio: tlskeylab.exe, labserver.exe y tlsviewer.py para ver TU propio tráfico HTTPS descifrado con Wireshark. Documentación completa de parámetros, descargas y limitaciones de HTTP/2 y HTTP/3.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>🔐</text></svg>">
+<style>
+:root{
+  --bg:#05070f; --bg2:#0a0f1f; --card:#101728; --card2:#151d33;
+  --ink:#e8eefc; --mut:#93a3c9; --line:#22304f;
+  --cy:#00e5ff; --vi:#7c4dff; --pk:#ff4d9d; --gr:#22e39a; --am:#ffb020;
+  --grad:linear-gradient(92deg,#00e5ff,#7c4dff 55%,#ff4d9d);
+  --shadow:0 20px 60px rgba(0,0,0,.55);
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,sans-serif;overflow-x:hidden;line-height:1.6}
+::selection{background:rgba(124,77,255,.45)}
+a{color:var(--cy);text-decoration:none}
+a:hover{filter:brightness(1.25)}
+code,pre,kbd{font-family:"Cascadia Code",Consolas,monospace}
+
+/* fondo aurora animado */
+.aurora{position:fixed;inset:0;z-index:-2;overflow:hidden}
+.a{position:absolute;border-radius:50%;filter:blur(110px);opacity:.22;mix-blend-mode:screen}
+.a1{width:52vmax;height:52vmax;background:#0d47a1;top:-18vmax;left:-12vmax;animation:drift1 26s ease-in-out infinite alternate}
+.a2{width:44vmax;height:44vmax;background:#4a0072;bottom:-16vmax;right:-10vmax;animation:drift2 30s ease-in-out infinite alternate}
+.a3{width:30vmax;height:30vmax;background:#00b8d4;top:38%;left:56%;animation:drift3 36s ease-in-out infinite alternate}
+@keyframes drift1{to{transform:translate(9vmax,6vmax) scale(1.15)}}
+@keyframes drift2{to{transform:translate(-8vmax,-5vmax) scale(1.1)}}
+@keyframes drift3{to{transform:translate(-10vmax,4vmax)}}
+.gridbg{position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:linear-gradient(rgba(80,120,220,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(80,120,220,.055) 1px,transparent 1px);
+  background-size:44px 44px;
+  -webkit-mask-image:radial-gradient(ellipse 90% 70% at 50% 20%,#000 55%,transparent 100%);
+  mask-image:radial-gradient(ellipse 90% 70% at 50% 20%,#000 55%,transparent 100%)}
+.scan{position:fixed;left:0;right:0;height:24vh;z-index:-1;pointer-events:none;opacity:.05;
+  background:linear-gradient(180deg,transparent,#9fd8ff,transparent);animation:scan 9s linear infinite}
+@keyframes scan{from{top:-24vh}to{top:110vh}}
+
+/* nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;gap:2px;
+  padding:10px max(18px,3vw);backdrop-filter:blur(14px);background:rgba(5,7,15,.62);transition:.35s}
+nav.solid{background:rgba(5,7,15,.88);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.5px;margin-right:auto;cursor:pointer}
+.brand .logo{width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center;
+  font-size:18px;animation:pulse 3s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 12px rgba(0,229,255,.35)}50%{box-shadow:0 0 26px rgba(124,77,255,.65)}}
+.brand b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+nav a.nav{padding:7px 13px;border-radius:9px;color:var(--mut);font-size:.92rem;transition:.25s}
+nav a.nav:hover,nav a.nav.on{color:#fff;background:rgba(124,77,255,.18)}
+nav .cta{margin-left:10px;padding:8px 18px;border-radius:10px;background:var(--grad);color:#001018;font-weight:800;
+  box-shadow:0 4px 22px rgba(0,229,255,.35);transition:.25s}
+nav .cta:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(124,77,255,.5)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 max(18px,3vw)}
+section{padding:84px 0 30px;position:relative}
+
+/* hero */
+#hero{min-height:100vh;display:flex;align-items:center;padding-top:110px}
+.kicker{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:99px;
+  padding:6px 15px;background:rgba(16,23,40,.7);font-size:.86rem;color:var(--mut)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--gr);box-shadow:0 0 10px var(--gr);animation:blip 1.6s infinite}
+@keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
+h1{font-size:clamp(2.4rem,5.6vw,4.1rem);line-height:1.08;margin:26px 0 14px;font-weight:900;letter-spacing:-1px}
+h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+  background-size:250% 250%;animation:shine 7s ease infinite}
+@keyframes shine{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+.sub{color:var(--mut);font-size:1.13rem;max-width:680px}
+.hero-btns{display:flex;gap:14px;flex-wrap:wrap;margin-top:30px}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 26px;border-radius:12px;font-weight:800;font-size:1rem;transition:.25s}
+.btn.p{background:var(--grad);color:#001018;box-shadow:0 6px 26px rgba(0,229,255,.35)}
+.btn.p:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(124,77,255,.5)}
+.btn.s{background:rgba(16,23,40,.8);color:var(--ink);border:1px solid var(--line)}
+.btn.s:hover{border-color:var(--cy);color:var(--cy)}
+.stats{display:flex;gap:34px;margin-top:44px;flex-wrap:wrap}
+.stat b{font-size:1.9rem;font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat span{display:block;color:var(--mut);font-size:.86rem}
+.term{background:rgba(8,11,22,.92);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+  overflow:hidden;margin-top:52px;animation:floaty 7s ease-in-out infinite}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.tbar{display:flex;gap:7px;padding:11px 15px;background:rgba(255,255,255,.03);border-bottom:1px solid var(--line)}
+.tbar i{width:11px;height:11px;border-radius:50%}
+.tbar i:nth-child(1){background:#ff5f57}.tbar i:nth-child(2){background:#febc2e}.tbar i:nth-child(3){background:#28c840}
+.tbar span{margin-left:auto;color:var(--mut);font-size:.78rem}
+.term pre{padding:19px 21px;font-size:.93rem;line-height:1.8;min-height:262px;white-space:pre-wrap}
+.term .c1{color:#6b7a99}.term .c2{color:#00e5ff}.term .c3{color:#22e39a}.term .c4{color:#ff4d9d}
+.term .cur{display:inline-block;width:9px;height:17px;background:var(--cy);vertical-align:-3px;animation:blip .85s infinite}
+
+/* secciones + reveal */
+h2{font-size:clamp(1.8rem,3.4vw,2.6rem);font-weight:900;letter-spacing:-.5px;margin-bottom:12px}
+h2 .g,h3 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--mut);max-width:760px;font-size:1.04rem;margin-bottom:34px}
+.eyebrow{color:var(--cy);font-weight:800;letter-spacing:2.5px;font-size:.78rem;text-transform:uppercase;margin-bottom:8px}
+.rv{opacity:0;transform:translateY(34px);transition:opacity .8s ease,transform .8s ease}
+.rv.in{opacity:1;transform:none}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:20px}
+.card{background:linear-gradient(160deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:var(--r);
+  padding:26px;position:relative;overflow:hidden;transition:.32s}
+.card:hover{transform:translateY(-6px);border-color:rgba(0,229,255,.5);box-shadow:0 18px 48px rgba(0,0,0,.5)}
+.card::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(600px circle at var(--mx,50%) var(--my,0%),rgba(0,229,255,.09),transparent 42%);
+  opacity:0;transition:.4s}
+.card:hover::before{opacity:1}
+.card .ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:22px;margin-bottom:14px;
+  background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.25)}
+.card h3{font-size:1.13rem;margin-bottom:7px}
+.card p{color:var(--mut);font-size:.94rem}
+.card .mono{font-size:.82rem;background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:8px;
+  padding:9px 12px;margin-top:13px;display:block;color:var(--cy)}
+.card code,.lead code,details .a code,td code{color:var(--cy)}
+
+/* tablas */
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden;font-size:.92rem;margin-top:18px}
+th{background:rgba(124,77,255,.14);text-align:left;padding:12px 15px;font-size:.78rem;
+  text-transform:uppercase;letter-spacing:1px;color:#b9a7ff;border-bottom:1px solid var(--line)}
+td{padding:11px 15px;border-bottom:1px solid rgba(34,48,79,.6);color:var(--mut);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tr:hover td{background:rgba(0,229,255,.035)}
+td code{background:rgba(0,229,255,.08);padding:2px 8px;border-radius:6px;font-size:.85rem}
+td b{color:var(--ink)}
+
+/* diagrama de flujo */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-top:40px}
+.fstep{position:relative;padding:20px 10px;text-align:center}
+.fc{background:linear-gradient(160deg,var(--card),var(--card2));border:1px solid var(--line);
+  border-radius:14px;padding:19px 10px;transition:.3s;cursor:default}
+.fstep:hover .fc{border-color:var(--cy);transform:scale(1.06);box-shadow:0 0 30px rgba(0,229,255,.2)}
+.fe{font-size:26px;padding-top:2px}
+.fnote{position:absolute;top:-72px;left:50%;transform:translateX(-50%);background:#000;border:1px solid var(--cy);
+  color:var(--cy);border-radius:8px;padding:4px 12px;font-size:.72rem;white-space:nowrap;opacity:0;transition:.3s;z-index:5}
+.fstep:hover .fnote{opacity:1;top:-36px}
+.farrow{position:absolute;top:34px;right:-6px;font-size:19px;color:var(--mut);animation:arrow 1.4s ease-in-out infinite;z-index:2}
+.fstep:nth-child(even) .farrow{animation-delay:.4s}
+@keyframes arrow{0%,100%{transform:translateX(0);opacity:.5}50%{transform:translateX(7px);opacity:1}}
+@media(max-width:900px){.flow{grid-template-columns:repeat(2,1fr)}.farrow{display:none}}
+
+/* pcap demo */
+.pcap{background:rgba(5,8,16,.93);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:var(--shadow);margin-top:34px}
+.prow{display:grid;grid-template-columns:56px 90px 1fr 110px;gap:10px;padding:9px 15px;font-size:.83rem;
+  border-bottom:1px solid rgba(34,48,79,.55);color:#9fb0d6;transition:.25s;align-items:center}
+.prow:hover{background:rgba(0,229,255,.06);transform:translateX(6px)}
+.ph{background:rgba(124,77,255,.16);color:#c9b8ff;font-weight:700}
+.ph:hover{transform:none;background:rgba(124,77,255,.16)}
+.plain{color:var(--gr)}
+.crip{color:var(--pk)}
+
+/* avisos */
+.warn{border-left:3px solid var(--am);background:linear-gradient(90deg,rgba(255,176,32,.08),transparent);
+  padding:15px 19px;border-radius:0 12px 12px 0;margin-top:18px;color:var(--mut);font-size:.94rem}
+.warn b{color:var(--am)}
+
+/* descargas */
+.dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(295px,1fr));gap:22px}
+.dlc{background:linear-gradient(160deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:var(--r);
+  padding:30px;transition:.32s;position:relative}
+.dlc:hover{transform:translateY(-7px);border-color:var(--gr);box-shadow:0 20px 54px rgba(34,227,154,.14)}
+.dlc .tag{position:absolute;top:16px;right:16px;font-size:.68rem;font-weight:800;letter-spacing:1px;
+  background:rgba(34,227,154,.14);color:var(--gr);border:1px solid rgba(34,227,154,.4);padding:4px 11px;border-radius:99px}
+.dlc h3{font-size:1.28rem;margin:8px 0 4px}
+.dlc .sz{color:var(--mut);font-size:.84rem;margin-bottom:18px}
+.dlc ul{list-style:none;color:var(--mut);font-size:.88rem;margin-bottom:22px}
+.dlc li{padding:4px 0 4px 22px;position:relative}
+.dlc li::before{content:"▸";position:absolute;left:2px;color:var(--cy)}
+.dlc .big{display:flex;justify-content:center;align-items:center;gap:9px;padding:13px;border-radius:11px;
+  background:var(--grad);color:#001018;font-weight:800;transition:.28s}
+.dlc .big:hover{transform:scale(1.03);filter:none}
+.dlc .alt{display:block;text-align:center;margin-top:9px;font-size:.84rem;color:var(--mut)}
+
+/* transparencia */
+.termcode{background:rgba(5,8,16,.93);border:1px solid var(--line);border-radius:14px;padding:19px 21px;
+  overflow-x:auto;font-size:.88rem;white-space:pre;color:#c8d4ef}
+.tk{color:#c678dd}.ts{color:#98c379}.tc{color:#5c6370}.tf{color:#61afef}
+
+/* comparativa http versions */
+.vs{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:20px}
+.vsc{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:24px;transition:.3s}
+.vsc:hover{border-color:var(--cy)}
+.vsc h3{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:1.05rem;flex-wrap:wrap}
+.bad{color:var(--pk)}.ok{color:var(--gr)}.meh{color:var(--am)}
+.vsc ul{list-style:none;color:var(--mut);font-size:.89rem}
+.vsc li{padding:6px 0 6px 24px;position:relative}
+.vsc li::before{content:"●";position:absolute;left:0;font-size:.7rem;top:11px}
+.bar{height:7px;border-radius:99px;background:#0a0f1f;border:1px solid var(--line);margin-top:16px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--grad);border-radius:99px;width:0;
+  transition:width 1.3s cubic-bezier(.2,.8,.2,1)}
+
+/* FAQ */
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;transition:.3s}
+details[open]{border-color:rgba(0,229,255,.45)}
+summary{padding:17px 21px;cursor:pointer;font-weight:700;list-style:none;display:flex;align-items:center;gap:13px}
+summary::before{content:"+";color:var(--cy);font-size:1.15rem;transition:.3s}
+details[open] summary::before{transform:rotate(45deg)}
+summary::-webkit-details-marker{display:none}
+details .a{padding:0 21px 18px;color:var(--mut);font-size:.93rem}
+
+/* ética */
+.ethic{background:linear-gradient(160deg,rgba(255,77,157,.09),var(--card));border:1px solid rgba(255,77,157,.35);
+  border-radius:var(--r);padding:30px}
+.ethic ul{margin:14px 0 0 20px;color:var(--mut);font-size:.93rem}
+.ethic li{padding:5px 0}
+
+footer{border-top:1px solid var(--line);margin-top:90px;padding:40px 0 50px;text-align:center;color:#5a6c94;font-size:.88rem}
+footer .fg{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+footer a{color:var(--mut);padding:0 10px}
+
+#sbar{position:fixed;top:0;left:0;height:3px;background:var(--grad);width:0;z-index:60;box-shadow:0 0 10px rgba(0,229,255,.6)}
+#top{position:fixed;right:22px;bottom:22px;width:44px;height:44px;border-radius:12px;background:var(--card);
+  border:1px solid var(--line);display:grid;place-items:center;cursor:pointer;opacity:0;pointer-events:none;transition:.3s;z-index:40}
+#top.show{opacity:1;pointer-events:auto}
+#top:hover{border-color:var(--cy);color:var(--cy)}
+@media(max-width:760px){nav a.nav{display:none}table{font-size:.8rem}
+  .pcap .prow{grid-template-columns:44px 70px 1fr 74px;font-size:.7rem}}
+</style>
+</head>
+<body>
+
+<div id="sbar"></div>
+<div class="aurora"><i class="a a1"></i><i class="a a2"></i><i class="a a3"></i></div>
+<div class="gridbg"></div><div class="scan"></div>
+
+<nav id="nav">
+  <div class="brand" onclick="location.hash='#hero'"><span class="logo">🔐</span><span>tls<span>keylab</span></span></div>
+  <a href="#que-es" class="nav" data-s="que-es">Qué es</a>
+  <a href="#herramientas" class="nav" data-s="herramientas">Herramientas</a>
+  <a href="#parametros" class="nav" data-s="parametros">Parámetros</a>
+  <a href="#pcap" class="nav" data-s="pcap">En el pcap</a>
+  <a href="#h2" class="nav" data-s="h2">HTTP/2</a>
+  <a href="#descargas" class="nav" data-s="descargas">Descargas</a>
+  <a href="#transparencia" class="nav" data-s="transparencia">Transparencia</a>
+  <a href="#faq" class="nav" data-s="faq">FAQ</a>
+  <a class="cta" href="#descargas">⬇ Descargar</a>
+</nav>
+
+<!-- HERO -->
+<section id="hero"><div class="wrap">
+  <div class="kicker"><span class="dot"></span> Laboratorio pedagógico · 100 % local · reversible</div>
+  <h1>Descifra <span class="g">TU PROPIO tráfico HTTPS</span> en Wireshark, sin romper TLS.</h1>
+  <p class="sub">TLS cifra el canal, Wireshark lo enseña… si le das los secretos de sesión del cliente. Los navegadores
+  Chromium y Firefox los escriben a un fichero cuando arrancan con la variable de entorno <b>SSLKEYLOGFILE</b> —
+  la misma convención que usa el propio Wireshark. <b>tlskeylab</b> ordena esa convención con tres utilidades
+  diminutas y reversibles: cada acción queda en <code>tool.log</code> y <code>uninstall</code> lo deja todo como estaba.</p>
+  <div class="hero-btns">
+    <a class="btn p" href="#descargas">⬇ Descargar la suite</a>
+    <a class="btn s" href="#que-es">¿Cómo funciona? →</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>3</b><span>herramientas (exe + server + visor)</span></div>
+    <div class="stat"><b>HTTP 1.1</b><span>forzado para rastro limpio</span></div>
+    <div class="stat"><b>e2e ✓</b><span>credenciales reales verificadas</span></div>
+    <div class="stat"><b>0</b><span>dependencias externas</span></div>
+  </div>
+  <div class="term">
+    <div class="tbar"><i></i><i></i><i></i><span>víctima → atacante · flujo real del e2e</span></div>
+    <pre id="tdemo"></pre>
+  </div>
+</div></section>
+
+<!-- QUÉ ES -->
+<section id="que-es"><div class="wrap">
+  <div class="eyebrow rv">La idea en 1 minuto</div>
+  <h2 class="rv">No rompes TLS. <span class="g">Te unes a la sesión.</span></h2>
+  <p class="lead rv">El descifrado de Wireshark se apoya en una convención firmada y pública: si un navegador arranca
+  con la variable <code>SSLKEYLOGFILE</code>, escribe en ese fichero — por cada handshake TLS — los secretos que derivan
+  las claves simétricas de la sesión. Es el formato NSS keylog del que la propia Wireshark (y curl, y muchos proxies)
+  toman su capacidad de descifrado. Sin malware, sin MITM: <b>el navegador coopera con su usuario</b>.
+  tlskeylab es la cinta que hace la convención práctica: activa la variable, lanza el navegador, graba el pcap
+  y te deja el rastro listo — pedido por pedido, byte a byte en claro.</p>
+
+  <div class="flow rv">
+    <div class="fstep"><span class="fnote">crea keylog + SMB solo-lectura + firewall</span><div class="fc"><div class="fe">🧭</div><b>setup</b><br><small style="color:var(--mut)">una sola vez</small></div><span class="farrow">➜</span></div>
+    <div class="fstep"><span class="fnote">dumpcap: Ethernet + loopback</span><div class="fc"><div class="fe">📷</div><b>capture</b><br><small style="color:var(--mut)">pcapng en vivo</small></div><span class="farrow">➜</span></div>
+    <div class="fstep"><span class="fnote">navegador + keylog + HTTP/1.1</span><div class="fc"><div class="fe">🚀</div><b>launch</b><br><small style="color:var(--mut)">chrome·edge·firefox</small></div><span class="farrow">➜</span></div>
+    <div class="fstep"><span class="fnote">el POST viaja cifrado por TLS</span><div class="fc"><div class="fe">🔓</div><b>login</b><br><small style="color:var(--mut)">tus credenciales</small></div><span class="farrow">➜</span></div>
+    <div class="fstep"><span class="fnote">keylog + pcap = texto plano</span><div class="fc"><div class="fe">🦈</div><b>Wireshark</b><br><small style="color:var(--mut)">follow HTTP Stream</small></div></div>
+  </div>
+
+  <div class="pcap rv">
+    <div class="tbar"><i></i><i></i><i></i><span>salida real del e2e (tshark + sslkeys.log)</span></div>
+    <div class="prow ph"><span>No.</span><span>Time</span><span>Info</span><span>Length</span></div>
+    <div class="prow"><span>383</span><span>2.417</span><span><span class="plain">POST /login HTTP/1.1 — descifrado TLS→HTTP</span></span><span>1461 B</span></div>
+    <div class="prow"><span>384</span><span>2.418</span><span><span class="plain">username=pruebaE2E&amp;password=··· — form-urlencoded</span></span><span>147 B</span></div>
+    <div class="prow"><span>400</span><span>2.502</span><span><span class="crip">Application Data — sin keylog: ilegible</span></span><span>512 B</span></div>
+  </div>
+
+  <div class="cards rv" style="margin-top:40px">
+    <div class="card"><div class="ic">🤝</div><h3>Cooperación, no intercepción</h3><p>No manipulas el tráfico de terceros: el navegador escribe el keylog porque el usuario que ejecuta tlskeylab controla esa máquina. Cada cambio queda registrado en <code>tool.log</code> y se revierte con <code>uninstall</code>.</p></div>
+    <div class="card"><div class="ic">📦</div><h3>Tres ficheros, nada más</h3><p><code>tlskeylab.exe</code> (motor Go), <code>labserver.exe</code> (objetivo de login con SQLite embebido) y <code>tlsviewer.py</code> (visor informe sin GUI). Cero dependencias de red o runtime extra.</p></div>
+    <div class="card"><div class="ic">🎓</div><h3>Pensado para aprender</h3><p>Cada modo imprime lo que hace, cada prueba es un script <code>e2e_*.ps1</code> inspeccionable y el README documenta las decisiones — incluidas las que salieron mal y por qué.</p></div>
+  </div>
+</div></section>
+
+<!-- HERRAMIENTAS -->
+<section id="herramientas"><div class="wrap">
+  <div class="eyebrow rv">La suite</div>
+  <h2 class="rv">Tres herramientas, <span class="g">un solo experimento</span></h2>
+  <p class="lead rv">La víctima siempre es TU máquina; el atacante es tu otro equipo (o el mismo PC con Wireshark local).</p>
+  <div class="cards">
+    <div class="card rv"><div class="ic">🧭</div><h3>tlskeylab.exe</h3><p>El motor: activa el keylog (variable de usuario + broadcast <code>WM_SETTINGCHANGE</code>), comparte el keylog por SMB solo lectura para el host atacante, abre el firewall, lanza el navegador con los secretos y captura con dumpcap.</p><span class="mono">Go · single exe · windows/amd64</span></div>
+    <div class="card rv"><div class="ic">🌐</div><h3>labserver.exe</h3><p>Servidor de LOGIN HTTPS con SQLite puro-Go: certificado autofirmado propio en el primer arranque, tablas <code>users</code> y <code>logins</code>, firewall automático y un POST de formulario real que llega descifrado al pcap.</p><span class="mono">Go + SQLite sin CGO · single exe</span></div>
+    <div class="card rv"><div class="ic">🐍</div><h3>tlsviewer.py</h3><p>Visor sin ventanas: une pcapng + keylog y produce el informe <code>+decodificado.txt</code> con cada petición HTTP legible, incluidos bodies y User-Agent. Solo biblioteca estándar.</p><span class="mono">Python 3 · stdlib · sin pip</span></div>
+  </div>
+</div></section>
+
+<!-- PARÁMETROS -->
+<section id="parametros"><div class="wrap">
+  <div class="eyebrow rv">Referencia completa</div>
+  <h2 class="rv">Todos los modos y <span class="g">sus parámetros</span></h2>
+  <p class="lead rv">Este es el mapa exacto de lo que aceptan los ejecutables — sin flags ocultos ni comportamientos invisibles.</p>
+
+  <h3 class="rv" style="margin-top:10px">🧭 tlskeylab.exe</h3>
+  <table class="rv">
+    <thead><tr><th>Comando</th><th>Qué hace</th><th>Notas</th></tr></thead>
+    <tbody>
+      <tr><td><code>setup</code></td><td><b>Una sola vez:</b> crea <code>%USERPROFILE%\tlskeylab\sslkeys.log</code>, fija la variable de usuario <code>SSLKEYLOGFILE</code> (con broadcast <code>WM_SETTINGCHANGE</code>), comparte el keylog por SMB solo-lectura <code>\\máquina\tlskeys</code> y abre el puerto 445 entrante limitado a la LAN.</td><td>Todo queda en <code>tool.log</code>. Requiere admin. Reversible.</td></tr>
+      <tr><td><code>status</code></td><td>Panel en vivo: líneas del keylog (crecen al navegar), recurso SMB, variable de entorno, últimos handshakes.</td><td>Útil para verificar antes de capturar.</td></tr>
+      <tr><td><code>launch &lt;navegador&gt; [args…]</code></td><td>Arranca <b>chrome | edge | firefox</b> heredando <code>SSLKEYLOGFILE</code>. Por defecto fuerza <b>HTTP/1.1</b>: Chrome/Edge con <code>--disable-http2 --disable-quic --ignore-certificate-errors</code>; Firefox con perfil dedicado <code>ff_profile_h11</code> (<code>user.js</code> desactiva HTTP/2, HTTP/3 y activa los roots de Windows para el labserver).</td><td>los argumentos extra van al navegador (ej. URLs). Si ya hay instancias del navegador, avisa: los procesos ya arrancados NO releen la variable.</td></tr>
+      <tr><td><code>launch … --h2</code></td><td>Anula el forzado HTTP/1.1 y deja el navegador con HTTP/2/3 estándar.</td><td>Ver <a href="#h2">limitaciones HTTP/2</a>.</td></tr>
+      <tr><td><code>capture [seg] [-i N]</code></td><td>Graba un <code>capture_*.pcapng</code> junto al keylog con <b>dumpcap</b> (motor de Wireshark). Sin argumentos: infinito hasta Ctrl+C. <code>capture 30</code>: 30 segundos. <b>Por defecto captura la interfaz activa + todas las loopback</b> (el tráfico a <code>https://localhost</code> no pasa por Ethernet).</td><td><code>capture -i N</code> fuerza una sola interfaz (numeración de <code>dumpcap -D</code>, la lista se imprime al arrancar). Si dumpcap no existe, intenta instalar Wireshark vía winget.</td></tr>
+      <tr><td><code>uninstall</code></td><td>Revierte todo: variable, recurso SMB y regla de firewall. Deja keylog y log como evidencia.</td><td>Reversible y visible.</td></tr>
+      <tr><td><code>uninstall --purge</code></td><td>Además borra keylog y <code>tool.log</code> (pide confirmación).</td><td>Elimina todas las huellas del lab.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="rv" style="margin-top:36px">🌐 labserver.exe</h3>
+  <table class="rv">
+    <thead><tr><th>Uso</th><th>Qué hace</th><th>Por defecto</th></tr></thead>
+    <tbody>
+      <tr><td><code>labserver.exe</code></td><td>Sirve el login en <code>https://localhost:&lt;puerto&gt;</code>. Primer arranque: genera <code>lab.crt/lab.key</code> autofirmado (SANs localhost + IP LAN), crea <code>lab_users.db</code> (SQLite: tablas <b>users</b> y <b>logins</b>), abre el firewall del puerto y <i>intenta</i> instalar el certificado en el almacén Root del usuario (algunas builds de Windows lo bloquean con «Solicitud no compatible»: instálalo a mano o confía en el <code>--ignore-certificate-errors</code> del <code>launch</code>).</td><td>Puerto <code>8443</code>, usuario demo <code>demo/demo123</code></td></tr>
+      <tr><td><code>-port NNNN</code></td><td>Sirve en otro puerto, ej. <code>labserver.exe -port 9443</code>.</td><td>8443</td></tr>
+      <tr><td><code>-stop</code></td><td>Termina cualquier <code>labserver.exe</code> y elimina la regla de firewall.</td><td>—</td></tr>
+      <tr><td>Ficheros</td><td><code>C:\&lt;usuario&gt;\labserver\lab_users.db</code>, <code>lab.crt</code>, <code>lab.key</code>. Cada POST de login queda registrado en la tabla <b>logins</b> (usuario, contraseña, resultado, IP, fecha) — visible además en el pcap descifrado.</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="rv" style="margin-top:36px">🐍 tlsviewer.py</h3>
+  <table class="rv">
+    <thead><tr><th>Uso</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><code>python3 tlsviewer.py capture_X.pcapng sslkeys.log</code></td><td>Cruza el pcap con el keylog (con tshark bajo el capó) y escribe <code>capture_X+decodificado.txt</code>: método, host, URI, User-Agent y cuerpo de cada petición HTTP descifrada — el rastro íntegro sin abrir Wireshark.</td></tr>
+      <tr><td>Requisitos</td><td>Python 3 estándar (sin pip) y <code>tshark</code> accesible en el PATH de la máquina del análisis.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn rv"><b>Requisito común:</b> <code>tlskeylab setup</code> se ejecuta desde una cuenta admin de la víctima. Sin esa autorización no se toca el firewall ni el SMB — y eso es de diseño.</div>
+</div></section>
+
+<!-- EN EL PCAP -->
+<section id="pcap"><div class="wrap">
+  <div class="eyebrow rv">Formato del keylog</div>
+  <h2 class="rv">Las líneas que <span class="g">descifran todo</span></h2>
+  <p class="lead rv">Cada handshake del navegador añade líneas como esta al fichero — Wireshark las cruza con el pcap y deriva las claves simétricas:</p>
+  <div class="termcode rv"><span class="tc"># ejemplo real generado en el e2e</span>
+CLIENT_HANDSHAKE_TRAFFIC_SECRET 3e5d3293ba6af… 5c82d8575aae33…
+CLIENT_TRAFFIC_SECRET_0        3e5d3293ba6af… 91c0ffee…
+EXPORTER_SECRET                3e5d3293ba6af… deadc0de…</div>
+  <div class="cards rv" style="margin-top:26px">
+    <div class="card"><div class="ic">🔑</div><h3>CLIENT_HANDSHAKE_TRAFFIC_SECRET</h3><p>TLS 1.3. El primer hex es el <b>Random del ClientHello</b> (identifica la sesión en el pcap); el segundo, el secreto del que derivan las claves.</p></div>
+    <div class="card"><div class="ic">🗝️</div><h3>CLIENT_RANDOM</h3><p>TLS 1.2. Formato clásico del mismo concepto. Sigue apareciendo en servidores legacy y es 100 % compatible con Wireshark.</p></div>
+    <div class="card"><div class="ic">🧾</div><h3>EXPORTER_SECRET</h3><p>Claves de exportación (channel binding, RFC 5705). No sirven para el cuerpo del stream, pero sí para verificar autenticación mutua.</p></div>
+  </div>
+  <p class="lead rv" style="margin-top:26px">En Wireshark: <b>Preferences → Protocols → TLS → (Pre)-Master-Secret log filename</b> → selecciona el keylog y el stream queda en claro. O directamente en línea de comandos: <code>tshark -r captura.pcapng -o tls.keylog_file:sslkeys.log</code>.</p>
+</div></section>
+
+<!-- HTTP/2 -->
+<section id="h2"><div class="wrap">
+  <div class="eyebrow rv">Transparencia técnica</div>
+  <h2 class="rv">Limitaciones con <span class="g">HTTP/2 y HTTP/3</span></h2>
+  <p class="lead rv">Por defecto <code>launch</code> fuerza HTTP/1.1 <b>no</b> porque HTTP/2 sea inseguro, sino porque lo que vas a enseñar en Wireshark es menos legible. Estas son las limitaciones reales:</p>
+
+  <div class="vs rv">
+    <div class="vsc"><h3>🌐 HTTP/1.1 <span class="ok">recomendado para el lab</span></h3>
+      <ul>
+        <li class="ok">Follow → HTTP Stream entrega cabeceras + cuerpos completos, petición a petición, en orden de bytes.</li>
+        <li class="ok">Cada request/response es una secuencia plana dentro del stream TCP: nada de mezclas.</li>
+        <li class="meh">Contrapartida: no multiplexa; las peticiones concurrentes abren más conexiones TCP.</li>
+      </ul>
+      <div class="bar"><i style="width:95%"></i></div>
+    </div>
+    <div class="vsc"><h3>⚡ HTTP/2 <span class="meh">descifrable, pero caótico en Wireshark</span></h3>
+      <ul>
+        <li class="ok">El keylog funciona igual: el HTTP/2 vive DENTRO del túnel TLS; el descifrado no cambia.</li>
+        <li class="bad">El multiplexado mete <b>varias peticiones y respuestas entrelazadas en el mismo stream TCP</b>: Follow HTTP Stream muestra las tramas mezcladas y fragmentadas.</li>
+        <li class="bad">Cabeceras HPACK: los nombres van comprimidos en tabla dinámica — filtros como <code>http.host</code> y <code>http.request.uri</code> quedan vacíos en frames que dependen del contexto previo.</li>
+        <li class="meh">Para aislar una petición: filtro <code>http2.streamid == N</code> o Follow → HTTP/2 Stream; los cuerpos aparecen en frames <code>DATA</code> descomprimidos.</li>
+      </ul>
+      <div class="bar"><i style="width:55%"></i></div>
+    </div>
+    <div class="vsc"><h3>🚀 HTTP/3 (QUIC) <span class="bad">fuera del alcance</span></h3>
+      <ul>
+        <li class="bad">No es TCP: corre sobre <b>UDP</b> con TLS 1.3 integrado y sus propias claves. El descifrado clásico por SSLKEYLOGFILE no aplica al flujo QUIC que decodifica Wireshark (soporte parcial y experimental).</li>
+        <li class="meh">En el pcap aparecen como paquetes UDP/QUIC ilegibles, no como HTTP descifrado.</li>
+        <li class="ok">Solución del lab: <code>--disable-quic</code> en Chrome/Edge (lo aplica <code>launch</code>) y el <code>user.js</code> del perfil de Firefox hace lo mismo. Resultado: todo el lab queda por HTTP/1.1 sobre TCP.</li>
+      </ul>
+      <div class="bar"><i style="width:15%"></i></div>
+    </div>
+  </div>
+
+  <div class="cards rv" style="margin-top:34px">
+    <div class="card"><div class="ic">☁️</div><h3>Doble cifrado de aplicación (OHTTP)</h3><p>Servicios como los relays de Google (ohttp-relay-*) viajan con <b>una segunda capa criptográfica de aplicación</b> (<code>message/ohttp-req</code>) DENTRO del POST: aunque el TLS se descifre, el cuerpo sigue ilegible por diseño del servicio — la llave la tiene el relay, no tu navegador.</p></div>
+    <div class="card"><div class="ic">🕰️</div><h3>Sesiones iniciadas antes de capturar</h3><p>El keylog solo contiene handshakes sucedidos mientras corría el navegador lanzado por <code>launch</code>. Si el navegador ya estaba abierto, esas conexiones no tienen secretos: la regla práctica es <b>capture primero, launch después</b>.</p></div>
+    <div class="card"><div class="ic">🧱</div><h3>Loopback ≠ Ethernet</h3><p>El tráfico a <code>https://localhost</code> nunca pasa por la tarjeta Ethernet: va por el adaptador loopback. Hasta v1.0 el <code>capture</code> solo tomaba Ethernet y los logins locales no aparecían. Ahora por defecto captura <b>ambas</b> interfaces.</p></div>
+  </div>
+</div></section>
+
+<!-- DESCARGAS -->
+<section id="descargas"><div class="wrap">
+  <div class="eyebrow rv">Consíguela</div>
+  <h2 class="rv">Descarga la <span class="g">suite completa</span></h2>
+  <p class="lead rv">Los binarios se publican como <b>Releases de GitHub</b> generados automáticamente por el workflow <code>release.yml</code> a partir de los fuentes del propio repo, con SHA-256 de cada asset en las notas. También puedes compilarlos tú (sección siguiente).</p>
+  <div class="dl">
+    <div class="dlc rv"><span class="tag">WINDOWS x64</span><h3>tlskeylab.exe</h3><div class="sz">Motor: setup · status · launch · capture · uninstall</div>
+      <ul><li>Go estático, sin runtime ni instalador</li><li>Instala Wireshark/dumpcap por ti si falta</li><li>Keylog + HTTP/1.1 forzado por defecto</li><li>Log completo de acciones: <code>tool.log</code></li></ul>
+      <a class="big" data-rel href="https://github.com/D1se0/tlskeylab/releases/latest/download/tlskeylab.exe">⬇ tlskeylab.exe</a>
+      <a class="alt" data-rel href="https://github.com/D1se0/tlskeylab/releases">Todas las versiones</a>
+      <div class="sha">SHA-256: publicado en las notas de cada release</div></div>
+    <div class="dlc rv"><span class="tag">WINDOWS x64</span><h3>labserver.exe</h3><div class="sz">Servidor de login HTTPS + SQLite para el lab</div>
+      <ul><li>Certificado autofirmado automático</li><li>SQLite embebido: <code>users</code> + <code>logins</code></li><li>Firewall automático en el puerto 8443</li><li>login demo: <code>demo / demo123</code></li></ul>
+      <a class="big" data-rel href="https://github.com/D1se0/tlskeylab/releases/latest/download/labserver.exe">⬇ labserver.exe</a>
+      <a class="alt" data-rel href="https://github.com/D1se0/tlskeylab/releases">Todas las versiones</a>
+      <div class="sha">Fuente: <code>labserver_src/</code> en el repo</div></div>
+    <div class="dlc rv"><span class="tag">PYTHON 3</span><h3>tlsviewer.py</h3><div class="sz">Visor del rastro HTTPS descifrado (solo stdlib)</div>
+      <ul><li>Une pcap + keylog en un informe <code>.txt</code></li><li>Muestra método, host, URI, User-Agent y body</li><li>Sin dependencias: solo Python 3</li><li>Funciona en Linux, Windows y macOS</li></ul>
+      <a class="big" data-rel href="https://github.com/D1se0/tlskeylab/releases/latest/download/tlsviewer.py">⬇ tlsviewer.py</a>
+      <a class="alt" data-rel href="https://github.com/D1se0/tlskeylab/blob/main/tlsviewer.py">Ver el código fuente</a>
+      <div class="sha">~12 KB · legible de arriba abajo</div></div>
+  </div>
+  <div class="warn rv"><b>Sobre tu antivirus:</b> los exes no llevan firma de code-signing (es un proyecto de laboratorio); SmartScreen mostrará el aviso de «editor desconocido» la primera vez. Puedes verificar el SHA-256 en las notas del release o compilarlo tú mismo — los comandos están en la sección siguiente.</div>
+</div></section>
+
+<!-- TRANSPARENCIA -->
+<section id="transparencia"><div class="wrap">
+  <div class="eyebrow rv">Reproducibilidad</div>
+  <h2 class="rv">Fuentes a la vista, <span class="g">compilación a un comando</span></h2>
+  <p class="lead rv">Nada de binarios opacos: el release se genera desde los mismos fuentes que hay en el repo (los assets suben tal cual se construyeron en el laboratorio) y el workflow declara cómo. Re-produce byte a byte con:</p>
+  <div class="termcode rv"><span class="tc"># 1) tlskeylab.exe — módulo Go principal del repo</span>
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags=<span class="ts">"-s -w"</span> -o tlskeylab.exe .
+
+<span class="tc"># 2) labserver.exe — submódulo con SQLite puro-Go (sin CGO)</span>
+<span class="tf">cd</span> labserver_src && GOOS=windows GOARCH=amd64 go build -o labserver.exe .
+
+<span class="tc"># 3) sin más: tlsviewer.py es un script — no se compila</span></div>
+  <p class="lead rv" style="margin-top:22px">Solo necesitas <b>Go ≥ 1.22</b> y Windows x64 para los binarios. Los scripts <code>e2e_*.ps1</code> del repo recorren el flujo completo con PowerShell en la víctima — la salida que ves en «En el pcap» es la exacta de esos scripts.</p>
+</div></section>
+
+<!-- FAQ -->
+<section id="faq"><div class="wrap">
+  <div class="eyebrow rv">Dudas habituales</div>
+  <h2 class="rv">Preguntas <span class="g">frecuentes</span></h2>
+  <div class="rv">
+    <details open><summary>¿Es esto un keylogger? ¿En qué se diferencia?</summary><div class="a">No captura pulsaciones de teclas ni pantallas. Solo aprovecha que el <b>navegador</b>, si arranca con <code>SSLKEYLOGFILE</code>, vuelca los secretos de <b>su propia sesión</b> a un fichero visible. No intercepta el tráfico de terceros ni modifica el sistema sin registro: todo queda en <code>tool.log</code> y <code>uninstall</code> revierte absolutamente todo.</div></details>
+    <details><summary>¿Funciona con webs reales (banca, webmail…)?</summary><div class="a">Técnicamente sí: cualquiera HTTPS de ese navegador se descifra con el keylog, incluidos POSTs de login. La guía de uso aquí es <b>tu</b> entorno de laboratorio: webs propias o servicios donde tengas cuenta y autorización. Respeta las limitaciones que se citan arriba (HTTP/3, OHTTP, sesiones previas).</div></details>
+    <details><summary>¿Por qué el certificado del labserver da aviso?</summary><div class="a">Es autofirmado — y esa es la gracia pedagógica: te ve el handshake real de un cert que el cliente <b>no</b> confía; por eso <code>launch</code> añade <code>--ignore-certificate-errors</code> en Chrome/Edge. Si quieres el aviso cero de verdad: doble clic en <code>lab.crt</code> → Instalar certificado → Usuario actual → «Entidades emisoras de raíz de confianza». Ojo: en algunas builds de Windows el almacén Root de usuario está protegido y la instalación programática falla («Solicitud no compatible») — ese flag existe exactamente para ese caso.</div></details>
+    <details><summary>¿Necesito Wireshark instalado en la víctima?</summary><div class="a">Solo <code>dumpcap.exe</code>, y <code>tlskeylab</code> intenta instalártelo solo (<b>winget</b>, visible y con log). Para <i>leer</i> el pcap sí necesitas Wireshark/tshark — normalmente en tu máquina de análisis, no en la víctima.</div></details>
+    <details><summary>¿Qué deja instalado y cómo lo desinstalo?</summary><div class="a">Variable de usuario <code>SSLKEYLOGFILE</code>, el fichero <code>%USERPROFILE%\tlskeylab\sslkeys.log</code>, un recurso SMB <code>tlskeys</code> de solo lectura y una regla de firewall entrante en el 445. <code>uninstall</code> lo revierte todo; <code>uninstall --purge</code> además borra los ficheros. Todo lo anterior está registrado en <code>tool.log</code>.</div></details>
+    <details><summary>¿Está soportado Firefox?</summary><div class="a">Sí: Firefox soporta <code>SSLKEYLOGFILE</code> de forma nativa. <code>launch firefox</code> usa además un perfil dedicado <code>ff_profile_h11</code> cuyo <code>user.js</code> desactiva HTTP/2, HTTP/3 y activa los Certificate Authorities de Windows (útil con el labserver). Ten en cuenta que si Firefox ya estaba abierto, debes cerrarlo antes para que la variable se herede.</div></details>
+    <details><summary>¿Dónde consigo el pcap de ejemplo?</summary><div class="a">En <code>e2e_*.ps1</code> del repo hay scripts que reproducen los e2e completos (navegar + login + capture). Los pcaps con credenciales delicadas no se publican — el tuyo lo generas tú en tu lab con <code>capture</code>.</div></details>
+  </div>
+</div></section>
+
+<!-- ÉTICA -->
+<section id="etica"><div class="wrap">
+  <div class="eyebrow rv">Responsabilidad</div>
+  <h2 class="rv">Ética y <span class="g">alcance</span></h2>
+  <div class="ethic rv">
+    <p style="color:var(--mut)">Este proyecto existe para <b>aprender cómo TLS, HTTP y el análisis de red interactúan</b>. Todo lo que hace es visible, reversible y logueado. Cuatro condiciones claras:</p>
+    <ul>
+      <li>Úsalo <b>solo en equipos que te pertenezcan</b> o para los que tengas autorización expresa.</li>
+      <li>No lo apuntes a credenciales de terceros: el usuario demo es <code>demo / demo123</code> y tú generas los tuyos.</li>
+      <li>No evade antivirus ni hace stealth: cada acción escribe en <code>tool.log</code> y deja SMB/firewall abiertos de forma visible.</li>
+      <li>No hay persistencia oculta: <code>uninstall</code> deja el equipo como estaba.</li>
+    </ul>
+  </div>
+</div></section>
+
+<footer>
+  <div>Hecho a mano · <span class="fg">tlskeylab</span> · sin frameworks ni build steps</div>
+  <p style="margin-top:8px">
+    <a href="https://github.com/D1se0/tlskeylab">GitHub</a>
+    <a href="https://github.com/D1se0/tlskeylab/releases">Releases</a>
+    <a href="https://github.com/D1se0/tlskeylab/blob/main/README.md">README</a>
+    <a href="https://github.com/D1se0/tlskeylab/issues">Issues</a>
+  </p>
+  <p style="margin-top:14px;font-size:.78rem">© 2026 tlskeylab — laboratorio educativo. Respeta los equipos: tu labor, tu responsabilidad.</p>
+</footer>
+
+<div id="top" title="Volver arriba">⬆</div>
+
+<script>
+/* ---- terminal hero: typing del flujo e2e real ---- */
+(function(){
+  var L=[
+    ["","víctima > ","tlskeylab.exe setup","c2"],
+    ["","","+ sslkeys.log listo  |  SMB \\\\\studias\tlskeys (solo-lectura)  |  firewall 445","c1"],
+    ["","","+ variable SSLKEYLOGFILE fijada al perfil del usuario","c1"],
+    ["","víctima > ","tlskeylab.exe capture 45","c2"],
+    ["","","captura activa: Ethernet + loopback  |  salida en .tlskeylab\\capture_*.pcapng","c3"],
+    ["","víctima > ","tlskeylab.exe launch chrome","c2"],
+    ["","","chrome con SSLKEYLOGFILE heredado (HTTP/1.1 forzado, --ignore-certificate-errors)","c3"],
+    ["","atacante> ","python3 tlsviewer.py capture_20261013_094237.pcapng sslkeys.log","c2"],
+    ["","","POST /login  localhost:8443","c4"],
+    ["","","  username  = pruebaE2E","c4"],
+    ["","","  password  = ***********   <- En claro tras descifrado TLS","c4"],
+    ["","","+ informe decodificado: capture_*.+decodificado.txt","c3"]
+  ];
+  var el=document.getElementById("tdemo"); if(!el) return;
+  var i=0,j=0,buf="";
+  function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;")}
+  function go(){
+    if(i>=L.length){ setTimeout(function(){el.innerHTML="";i=0;j=0;buf="";go();},5200); return; }
+    var row=L[i], txt=row[2];
+    if(j<txt.length){
+      j++;
+      el.innerHTML=buf+(row[1]?"<span class='c2'>"+row[1]+"</span>":"")+"<span class='"+row[3]+"'>"+esc(txt.slice(0,j))+"</span><span class='cur'></span>";
+      setTimeout(go,txt.length>60?9:22);
+    } else {
+      buf+=(row[1]?"<span class='c2'>"+row[1]+"</span>":"")+"<span class='"+row[3]+"'>"+esc(txt)+"</span>\n";
+      el.innerHTML=buf;
+      i++; j=0;
+      setTimeout(go,row[3]==="c1"?200:340);
+    }
+  }
+  go();
+})();
+
+/* ---- reveal al scroll ---- */
+var io=new IntersectionObserver(function(es){
+  es.forEach(function(e){ if(e.isIntersecting) e.target.classList.add("in"); });
+},{threshold:.12});
+document.querySelectorAll(".rv").forEach(function(el,i){ el.style.transitionDelay=(i%4)*70+"ms"; io.observe(el); });
+
+/* ---- barras de comparativa que se llenan al entrar en pantalla ---- */
+var bio=new IntersectionObserver(function(es){
+  es.forEach(function(e){ if(e.isIntersecting){ var w=e.target.getAttribute("data-w"); e.target.style.width=w; } });
+},{threshold:.4});
+document.querySelectorAll(".bar i").forEach(function(b,idx,n){
+  b.setAttribute("data-w",b.style.width); b.style.width="0";
+  bio.observe(b);
+});
+
+/* ---- nav: strip + on-scroll highlight ---- */
+var nav=document.getElementById("nav"),sbar=document.getElementById("sbar"),top=document.getElementById("top");
+var map={}; document.querySelectorAll("nav a.nav").forEach(function(a){ map[a.getAttribute("data-s")]=a; });
+window.addEventListener("scroll",function(){
+  var y=window.scrollY;
+  if(y>40){nav.classList.add("solid")}else{nav.classList.remove("solid")}
+  if(y>700){top.classList.add("show")}else{top.classList.remove("show")}
+  sbar.style.width=(100*y/(document.documentElement.scrollHeight-window.innerHeight||1))+"%";
+  var cur="hero";
+  ["hero","que-es","herramientas","parametros","pcap","h2","descargas","transparencia","faq"].forEach(function(id){
+    var s=document.getElementById(id); if(s && s.offsetTop-170<=y) cur=id;
+  });
+  for(var k in map){ if(map[k]) map[k].classList.toggle("on",k===cur); }
+},{passive:true});
+top.onclick=function(){ window.scrollTo({top:0,behavior:"smooth"}); };
+
+/* ---- glow que sigue el ratón en cards ---- */
+document.querySelectorAll(".card,.dlc").forEach(function(c){
+  c.addEventListener("mousemove",function(e){
+    var r=c.getBoundingClientRect();
+    c.style.setProperty("--mx",((e.clientX-r.left)/r.width*100)+"%");
+    c.style.setProperty("--my",((e.clientY-r.top)/r.height*100)+"%");
+  });
+});
+</script>
+</body>
+</html>

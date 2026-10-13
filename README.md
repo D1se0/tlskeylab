@@ -213,6 +213,22 @@ EN LA ATACANTE:
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o tlskeylab.exe .
 ```
 
+## Descargas, release y web del proyecto
+
+- **Web oficial (GitHub Pages, desplegada por Actions):** <https://d1se0.github.io/tlskeylab/>
+- **Releases:** <https://github.com/D1se0/tlskeylab/releases> — binarios `tlskeylab.exe`, `labserver.exe`, `tlsviewer.py` + `SHA256SUMS.txt` + notas completas por versión (generados por el workflow `release.yml` al pushear un tag `v*`).
+- **Notas de la versión actual:** `RELEASE_NOTES.md` en el repo (incluye qué se verificó y las limitaciones declaradas).
+
+```bash
+# crear el release (desde tu máquina con push configurado):
+git tag v1.0.0 && git push origin v1.0.0
+# → Actions crea el release con los assets y las notas automáticamente
+```
+
+La web (`site/index.html`) es HTML+CSS+JS puros, sin frameworks: se despliega con
+`.github/workflows/pages.yml` (actions/deploy-pages) y documenta toda la suite,
+parámetros incluidos y las limitaciones de HTTP/2 y HTTP/3.
+
 ## Ética y alcance
 
 Esta herramienta **solo** habilita el mecanismo SSLKEYLOGFILE en la máquina donde se ejecuta, con cambios visibles, logueados y reversibles. No intercepta tráfico de terceros, no instala servicios ni persiste silenciosamente. Úsala solo sobre equipos que te pertenezcan o para los que tengas autorización expresa.

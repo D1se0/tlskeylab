@@ -177,6 +177,32 @@ Con esos secretos Wireshark deriva las claves de cifrado y puede mostrar en clar
 
 ---
 
+## Laboratorio de login (labserver.exe)
+
+Servidor web de login **en Go (sin Python)** con SQLite embebido, para practicar el descifrado de las credenciales que TÚ introduces sobre HTTPS:
+
+```
+EN LA VÍCTIMA:
+  labserver.exe                          (queda en https://localhost:8443; usuario demo: demo / demo123)
+  tlskeylab.exe capture                  (1º) → Ctrl+C al final
+  tlskeylab.exe launch chrome            (2º; HTTP/1.1 forzado + --ignore-certificate-errors)
+  → entra en https://localhost:8443 y haz login
+
+EN LA ATACANTE:
+  copia sslkeys.log + capture_*.pcapng → python3 tlsviewer.py
+  (o Wireshark: tcp.port==8443 → Follow → HTTP Stream → username=...&password=... en claro)
+```
+
+- Certificado autofirmado generado en el primer arranque (`labserver\lab.crt`). Si el navegador muestra el aviso de "conexión no privada", acepta y sigue; con Chrome/Edge lanzados por `launch` el flag `--ignore-certificate-errors` lo salta automáticamente.
+- La instalación automática del cert en el almacén Root del usuario está implementada via API nativa de Windows (`CertOpenStore`), pero **algunas builds lo bloquean** (`Solicitud no compatible`); en ese caso instálalo a mano o usa el flag del `launch`.
+- `labserver.exe -port 9443` cambia el puerto; `labserver.exe -stop` detiene y quita la regla del firewall.
+
+### Lecciones depurando la web en blanco (2026-10-13)
+
+1. **Plantilla Go con campos no exportados**: los campos `brand, user, pass…` en minúscula NO son accesibles desde `html/template`. `Execute` escribe hasta llegar a la primera variable y **aborta silenciosamente** → respuesta truncada a 67 bytes → página en blanco. Solución: campos exportados (`Brand`, `User`, `Pass`, `Msg`, `Ok`) y loguear el error de `Execute`.
+2. **Certificado autofirmado sin instalar**: el navegador rechaza el handshake (`tls: unknown certificate`) y nunca carga la página. `launch chrome/edge` añade `--ignore-certificate-errors`; Firefox lee los roots de Windows (`security.enterprise_roots.enabled`) en su perfil dedicado.
+3. **Tarea programada vs carpeta**: la tarea de Windows apuntaba a `C:\Users\diseo\labserver.exe` (raíz del perfil), no a la copia bajo `labserver\`. Si cambias el exe, actualiza TODAS las copias o la tarea seguirá ejecutando la vieja.
+
 ## Fuente y compilación (si quieres tocar código)
 
 - `main.go` — modos, lógica de setup/status/launch/uninstall.
